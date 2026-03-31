@@ -149,7 +149,7 @@ export default function WhatsAppWebClone() {
     },
     {
       id: 'bot',
-      name: 'LinguistGuard AI',
+      name: 'Kerala AI Checker',
       type: 'bot',
       avatar: 'LG',
       lastMessage: 'Verified Fact-Checker',
@@ -179,23 +179,33 @@ export default function WhatsAppWebClone() {
     return () => document.removeEventListener("click", closeMenu);
   }, []);
 
-  const parseAIResponse = (text: string): AnalyzeResult => {
-    if (text.includes("KSEB")) return RESPONSE_1_KSEB;
-    if (text.includes("SBI")) return RESPONSE_2_KYC;
-    if (text.includes("LULU")) return RESPONSE_3_LULU;
-    const isSuspicious = text.length > 25 && (text.toLowerCase().includes("http") || text.toLowerCase().includes("win") || text.toLowerCase().includes("free"));
-    if (isSuspicious) {
+  const fetchAIResponse = async (text: string): Promise<AnalyzeResult> => {
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error("Error analyzing text:", error);
       return {
-        trust_score: 35,
-        verdict: "Suspicious Activity",
-        explanation: "Detailed linguistic scans identify potential social engineering vectors attempting to manipulate the reader with unverified links.",
-        red_flags: ["Unverified Domain", "Potential Phishing Pattern"]
+        trust_score: 50,
+        verdict: "Error / പിശക്",
+        explanation: "Unable to process the request. സേവനവുമായി ബന്ധിപ്പിക്കാൻ കഴിഞ്ഞില്ല.",
+        red_flags: ["Connection/API Error"]
       };
     }
-    return GENERIC_RESPONSE;
   };
 
-  const handleForwardToBot = (msgText: string) => {
+  const handleForwardToBot = async (msgText: string) => {
     setActiveChatId('bot');
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase();
 
@@ -221,38 +231,38 @@ export default function WhatsAppWebClone() {
       return c;
     }));
 
-    setTimeout(() => {
-      setContacts(prev => prev.map(c => {
-        if (c.id === 'bot') {
-          const filtered = c.messages.filter(m => !m.isTyping);
-          const aiResponse = parseAIResponse(msgText);
-          return {
-            ...c,
-            lastMessage: 'Analysis Complete',
+    const aiResponse = await fetchAIResponse(msgText);
+
+    setContacts(prev => prev.map(c => {
+      if (c.id === 'bot') {
+        const filtered = c.messages.filter(m => !m.isTyping);
+        return {
+          ...c,
+          lastMessage: 'Analysis Complete',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase(),
+          messages: [...filtered, {
+            id: Date.now().toString(),
+            sender: 'bot',
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase(),
-            messages: [...filtered, {
-              id: Date.now().toString(),
-              sender: 'bot',
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase(),
-              result: aiResponse
-            }]
-          };
-        }
-        return c;
-      }));
-    }, 2500);
+            result: aiResponse
+          }]
+        };
+      }
+      return c;
+    }));
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !activeChat) return;
 
+    const currentInputText = inputText;
     const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase();
-    const newMsg: ChatMessage = { id: Date.now().toString(), text: inputText, sender: 'user', time: timestamp };
+    const newMsg: ChatMessage = { id: Date.now().toString(), text: currentInputText, sender: 'user', time: timestamp };
 
     setContacts(prev => prev.map(c => {
       if (c.id === activeChatId) {
-        return { ...c, unread: 0, lastMessage: inputText, time: timestamp, messages: [...c.messages, newMsg] };
+        return { ...c, unread: 0, lastMessage: currentInputText, time: timestamp, messages: [...c.messages, newMsg] };
       }
       return c;
     }));
@@ -265,27 +275,26 @@ export default function WhatsAppWebClone() {
         return c;
       }));
 
-      setTimeout(() => {
-        setContacts(prev => prev.map(c => {
-          if (c.id === 'bot') {
-            const filtered = c.messages.filter(m => !m.isTyping);
-            const aiResponse = parseAIResponse(inputText);
+      const aiResponse = await fetchAIResponse(currentInputText);
 
-            return {
-              ...c,
-              lastMessage: aiResponse.verdict,
+      setContacts(prev => prev.map(c => {
+        if (c.id === 'bot') {
+          const filtered = c.messages.filter(m => !m.isTyping);
+
+          return {
+            ...c,
+            lastMessage: aiResponse.verdict,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase(),
+            messages: [...filtered, {
+              id: Date.now().toString(),
+              sender: 'bot',
               time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase(),
-              messages: [...filtered, {
-                id: Date.now().toString(),
-                sender: 'bot',
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase(),
-                result: aiResponse
-              }]
-            };
-          }
-          return c;
-        }));
-      }, 2000);
+              result: aiResponse
+            }]
+          };
+        }
+        return c;
+      }));
     }
   };
 
